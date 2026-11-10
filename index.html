@@ -95,6 +95,7 @@ ol.steps { margin: 6px 0 0; padding-left: 20px; font-size: 14px; } ol.steps li {
 .pick .ttl { font-weight: 600; font-size: 14px; line-height: 1.3; text-align: center; max-width: 100%; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.6em; }
 .note.upd { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; }
+.warn-acts { display: flex; align-items: center; gap: 8px; flex: none; }
 .place-note { margin: -4px 0 10px; text-align: center; }
 .pick .meta { font-size: 12px; color: var(--muted); margin-top: -6px; text-align: center; line-height: 1.35; }
 @media (hover: hover) { .pick:hover .cover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,.18); } }
@@ -268,6 +269,7 @@ body.sheet-open { overflow: hidden; }
   </nav>
   <main>
     <div class="note upd" id="upd-banner" hidden></div>
+    <div class="note upd warn" id="warn-banner" hidden></div>
     <!-- COMPARE -->
     <section class="view" id="v-compare">
       <div id="cmp-live">
@@ -777,7 +779,7 @@ const store = {
   kind: () => (STORE.db ? 'IndexedDB' : 'localStorage'),
 };
 // ── Error log, for "Copy diagnostics" ──
-const BUILD = '2026-11-09a';
+const BUILD = '2026-11-10a';
 const ERRS = store.get('errors', []);
 function logError(msg) { ERRS.push({ t: Date.now(), m: String(msg).slice(0, 300) }); while (ERRS.length > 30) ERRS.shift(); store.set('errors', ERRS); }
 addEventListener('error', e => logError(`${e.message} (line ${e.lineno})`));
@@ -1315,13 +1317,17 @@ function boardRow(r, f, gaps) {
     return li;
   }
 }
+// A title's most recent matchups, newest first: "beat X", "lost to Y". Shown in Ranking and in the hold-a-cover sheet.
+function matchupsHtml(id, n = 8) {
+  const h = byTime(S.events).reverse().filter(e => e.result !== 'skip' && (e.a === id || e.b === id)).slice(0, n);
+  return h.length ? '<ul class="h2h">' + h.map(e => { const me = e.a === id ? 'a' : 'b', o = me === 'a' ? e.b : e.a, res = e.result === 'tie' ? 'tie' : e.result === me ? 'win' : 'loss';
+    return `<li><span class="tag ${res}">${res === 'win' ? 'beat' : res === 'loss' ? 'lost to' : 'tied'}</span>${esc(S.items[o]?.title || 'Removed title')}</li>`; }).join('') + '</ul>' : '<div class="muted">No picks yet.</div>';
+}
 function detail(id) {
   const d = document.createElement('div'); d.className = 'rdetail';
   const it = S.items[id], R = S.ratings[id];
-  const h = byTime(S.events).reverse().filter(e => e.result !== 'skip' && (e.a === id || e.b === id)).slice(0, 8);
   d.innerHTML = `<div class="muted">${R.w} wins · ${R.l} losses${R.d ? ' · ' + R.d + ' ties' : ''}${R.u ? ' · ' + R.u + ' upset' + (R.u === 1 ? '' : 's') : ''} · ${(R.p || 0) >= ALARM_AT ? 'Recent picks disagree with its place' : (R.p || 0) > CALM_AT ? 'A few surprising picks lately' : 'Recent picks agree with its place'}${Math.abs(R.m || 0) >= STREAK_AT ? ` · On a ${R.m > 0 ? 'winning' : 'losing'} run, moving ${R.m > 0 ? 'up' : 'down'} faster` : ''} · <a href="${esc(it.url)}" target="_blank" rel="noopener">Open on AniList</a></div>
-    ${h.length ? '<ul class="h2h">' + h.map(e => { const me = e.a === id ? 'a' : 'b', o = me === 'a' ? e.b : e.a, res = e.result === 'tie' ? 'tie' : e.result === me ? 'win' : 'loss';
-      return `<li><span class="tag ${res}">${res === 'win' ? 'beat' : res === 'loss' ? 'lost to' : 'tied'}</span>${esc(S.items[o]?.title || 'Removed title')}</li>`; }).join('') + '</ul>' : '<div class="muted">No picks yet.</div>'}
+    ${matchupsHtml(id)}
     ${sparkline(id)}
     <div class="actions" style="margin-top:2px"><button class="link" data-about>About</button><button class="link" data-e>Edit or relink</button><button class="link" data-r>My opinion changed</button><button class="link" data-p>Move to Planning</button><button class="link" data-x>Leave out of the ranking</button></div>`;
   d.querySelector('[data-p]').onclick = () => { it.pendingStatus = 'PLANNING'; it.forgotAt = Date.now(); touch(it); saveItems(); recompute(); openRow = null; renderBoard(); toast(it.title + ' moves to Planning on your next push'); };
@@ -2297,12 +2303,14 @@ function openAbout(id, fromCompare) {
   const fd = d => (d && d.year ? (d.month ? MONTHS[d.month - 1] + ' ' : '') + d.year : '');
   const lines = [STATUS[effStatus(it)], effProgress(it) ? `read to ch. ${effProgress(it)}${it.chapters ? ' of ' + it.chapters : ''}` : '', fd(it.startedAt) && 'started ' + fd(it.startedAt), fd(it.completedAt) && 'finished ' + fd(it.completedAt)].filter(Boolean).join(' · ');
   const tags = [...(it.genres || []), ...(it.tags || []).slice(0, 6).map(t => t[0])];
+  const RT = S.ratings[id];   // only titles in the ranking have matchups
   $('sheet').hidden = false; document.body.classList.add('sheet-open'); sheetId = null;
   $('sheet-body').innerHTML = `<div class="sheet-head">${thumb(it, 'ithumb about-cover')}<div class="iname"><h2 id="sheet-title">${esc(it.title)}</h2>
       <small>${esc(meta(it))}${r >= 0 ? ` · #${r + 1} of ${p.rows.length} in your ranking` : ''}</small></div><button class="link" id="sheet-close">Close</button></div>
     <p class="small"><b>On your list:</b> ${esc(lines || '—')}${it.score ? ` · your score ${fmtScore(it.score, f)}` : ''}${it.meanScore ? ` · community ${it.meanScore}%` : ''}</p>
     ${it.notes ? `<p class="small"><b>Your notes:</b> ${esc(it.notes)}</p>` : ''}
     ${tags.length ? `<div class="chips about-tags">${tags.map(t => `<span class="tchip">${esc(t)}</span>`).join('')}</div>` : ''}
+    ${RT && RT.n ? `<div class="small about-h2h"><p style="margin:10px 0 4px"><b>Past matchups:</b> ${RT.w} win${RT.w === 1 ? '' : 's'} · ${RT.l} loss${RT.l === 1 ? '' : 'es'}${RT.d ? ' · ' + RT.d + ' tie' + (RT.d === 1 ? '' : 's') : ''}</p>${matchupsHtml(id, 6)}</div>` : ''}
     <div class="about-desc small muted" id="about-desc">${S.viewer ? 'Loading the synopsis…' : 'Connect AniList to see the synopsis.'}</div>
     <div class="actions">${fromCompare ? '<button id="ab-forgot">Forgot this one</button>' : ''}<button id="ab-edit">Edit or relink</button><a class="btn" href="${esc(it.url)}" target="_blank" rel="noopener">Open on AniList</a></div>`;
   $('sheet-close').onclick = closeSheet;
@@ -2592,9 +2600,9 @@ async function connect(tok, remember) {
       : IS_APP ? `Couldn't reach AniList (${e.message}). Check your internet connection and try again.`
       : `Couldn't reach AniList (${e.message}). If this page is open inside an app's preview, that preview blocks internet access: open the file in Chrome, Firefox, Edge or Safari.`;
   }
-  renderSetup(); renderAcct();
+  renderSetup(); renderAcct(); renderWarn();
 }
-function onAuthError(e) { S.viewer = null; S.token = null; S.client = null; S.authError = e.message; store.set('token', null); store.set('viewer', null); renderAcct(); }
+function onAuthError(e) { S.viewer = null; S.token = null; S.client = null; S.authError = e.message; store.set('token', null); store.set('viewer', null); renderAcct(); renderWarn(); }
 
 function setupSection(sec) {
   sec = sec || store.get('setupSec', 'account'); $('v-setup').dataset.sec = sec; store.set('setupSec', sec);
@@ -2882,6 +2890,7 @@ class GhMissing extends Error {}   // the gist this device remembered is gone (d
 const GIST_FILE = 'anilist-manga-ranker.json';
 async function gh(path, opts = {}) {
   const r = await fetch('https://api.github.com' + path, { ...opts, cache: 'no-store', headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + S.gh.token, ...(opts.body ? { 'Content-Type': 'application/json' } : {}) } });
+  noteExpiry('sync', r.headers.get('github-authentication-token-expiration'));
   if (r.status === 401) throw new GhAuthError('GitHub did not accept the token. It may have expired; make a new one.');
   if (r.status === 404 && !opts.method && path.startsWith('/gists/')) throw new GhMissing('GitHub no longer has the sync gist. Press Sync now to start a new one from this device.');
   if (r.status === 403 || r.status === 404) { const b = await r.json().catch(() => ({})); throw new GhAuthError(/rate limit/i.test(b.message || '') ? 'GitHub rate limit reached; sync will retry later.' : 'This token cannot use gists. Make one with the "gist" permission.'); }
@@ -2898,26 +2907,55 @@ async function findGist() {
   return null;
 }
 // The sync file is stored gzip-compressed (about a sixth of the size) as "MR1:" + base64. Older plain JSON still reads.
-async function packData(data) {
-  const json = JSON.stringify(data);
-  if (!window.CompressionStream) return json;
-  const buf = new Uint8Array(await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
-  let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
-  return 'MR1:' + btoa(bin);
+// With a passphrase (Setup → Sync) the file is also encrypted on this device before it leaves: "MR2:" + base64 of
+// salt (16 bytes), nonce (12 bytes) and the AES-GCM ciphertext of one flag byte (1 = gzip) plus the data. The key
+// comes from the passphrase (PBKDF2, SHA-256). GitHub only ever sees the encrypted text; the passphrase stays here.
+class SyncLocked extends Error {}   // the sync file is encrypted and this device has no (or the wrong) passphrase
+const b64 = buf => { let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000)); return btoa(bin); };
+const unb64 = s => { const bin = atob(s), buf = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i); return buf; };
+const SYNC_KEYS = new Map(); let syncSalt = null, remoteEncrypted = false;
+async function syncKey(pass, salt) {
+  const id = b64(salt) + '|' + pass; if (SYNC_KEYS.has(id)) return SYNC_KEYS.get(id);
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 250000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  SYNC_KEYS.set(id, key); return key;
 }
+const canEncrypt = () => !!(window.crypto && crypto.subtle);
+async function packData(data) {
+  const json = JSON.stringify(data), pass = S.gh?.pass;
+  const gz = window.CompressionStream ? new Uint8Array(await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer()) : null;
+  if (!pass) return gz ? 'MR1:' + b64(gz) : json;
+  if (!canEncrypt()) throw new Error("This browser can't encrypt the sync file.");
+  const body = gz || new TextEncoder().encode(json), plain = new Uint8Array(body.length + 1); plain[0] = gz ? 1 : 0; plain.set(body, 1);
+  const salt = syncSalt || crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await syncKey(pass, salt), plain));
+  const out = new Uint8Array(28 + ct.length); out.set(salt); out.set(iv, 16); out.set(ct, 28); syncSalt = salt;
+  return 'MR2:' + b64(out);
+}
+const gunzip = buf => new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
 async function unpackData(text) {
+  if (text.startsWith('MR2:')) {
+    const pass = S.gh?.pass;
+    if (!pass) throw new SyncLocked('The sync file is encrypted. Enter its passphrase in Setup → Sync on this device.');
+    if (!canEncrypt()) throw new Error("This browser can't open the encrypted sync file.");
+    const buf = unb64(text.slice(4)), salt = buf.slice(0, 16); let plain;
+    try { plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: buf.slice(16, 28) }, await syncKey(pass, salt), buf.slice(28))); }
+    catch { throw new SyncLocked("The passphrase on this device doesn't open the sync file. Enter the right one in Setup → Sync."); }
+    syncSalt = salt;
+    if (plain[0] !== 1) return JSON.parse(new TextDecoder().decode(plain.subarray(1)));
+    if (!window.DecompressionStream) throw new Error('This browser is too old to read the compressed sync file.');
+    return JSON.parse(await gunzip(plain.subarray(1)));
+  }
   if (!text.startsWith('MR1:')) return JSON.parse(text);
   if (!window.DecompressionStream) throw new Error('This browser is too old to read the compressed sync file.');
-  const bin = atob(text.slice(4)), buf = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-  return JSON.parse(await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text());
+  return JSON.parse(await gunzip(unb64(text.slice(4))));
 }
 async function gistText(g) {
   const f = g.files?.[GIST_FILE];
   if (!f) return null;
   return f.truncated ? await (await fetch(f.raw_url, { cache: 'no-store' })).text() : f.content;
 }
-async function readGist(id) { const t = await gistText(await gh('/gists/' + id)); return t == null ? null : unpackData(t); }
+async function readGist(id) { const t = await gistText(await gh('/gists/' + id)); remoteEncrypted = !!t && t.startsWith('MR2:'); return t == null ? null : unpackData(t); }
 async function writeGist(id, data) {
   const files = { [GIST_FILE]: { content: await packData(data) } };
   if (id) return gh('/gists/' + id, { method: 'PATCH', body: JSON.stringify({ files }) });
@@ -2948,7 +2986,7 @@ async function openRestore() {
       box.innerHTML = `<div class="note warn">From ${esc(new Date(c.committed_at).toLocaleString())}: ${(snap.events || []).length} picks. Restoring removes the ${lost} pick${lost === 1 ? '' : 's'} made after it, on every synced device, and puts back that version's edits, relinks and settings. Your AniList list and push history aren't changed.
         <div class="actions"><button class="primary" id="restore-go">Restore this version</button></div></div>`;
       $('restore-go').onclick = () => applyRestore(snap);
-    } catch (e) { box.innerHTML = `<div class="note bad">${esc(e.message)}</div>`; }
+    } catch (e) { box.innerHTML = `<div class="note bad">${esc(e instanceof SyncLocked ? "This version was saved with a different passphrase, so this device can't open it." : e.message)}</div>`; }
   });
 }
 function applyRestore(snap) {
@@ -2986,30 +3024,88 @@ async function cloudSync() {
       }
     }
     const { gotNew, remoteStale } = remote ? mergeData(remote) : { gotNew: false, remoteStale: true };
-    if (remoteStale) {
+    // A new passphrase takes over only now, after the file was opened with the old one (or wasn't encrypted yet).
+    let rekey = false;
+    if (S.gh.newPass) { S.gh.pass = S.gh.newPass; delete S.gh.newPass; syncSalt = null; rekey = true; }
+    if (remoteStale || rekey || (remote && !!S.gh.pass !== remoteEncrypted)) {
       const g = await writeGist(S.gh.id, snapshot());
       if (!S.gh.id) { S.gh.id = g.id; }
+      remoteEncrypted = !!S.gh.pass;
     }
     S.gh.at = Date.now(); store.set('gh', S.gh.remember ? S.gh : null);
+    S.cloudHard = S.cloudLocked = false; store.set('syncBroken', null);
     if (gotNew) { recompute(); if (!valid(S.pair)) S.pair = null; if (!S.busy) go(S.view); toast('Synced picks from your other device'); }
   } catch (e) {
     S.cloudErr = e.message; logError('Sync: ' + e.message);
-    if (e instanceof GhAuthError && /accept/.test(e.message)) { S.gh.token = null; store.set('gh', null); }
+    // Problems that won't go away on their own (a rejected token, a missing passphrase) are remembered, so the
+    // warning on the main screen is still there next time. A passing network hiccup isn't.
+    S.cloudHard = e instanceof SyncLocked || (e instanceof GhAuthError && !/rate limit/i.test(e.message));
+    S.cloudLocked = e instanceof SyncLocked;
+    if (S.cloudHard) store.set('syncBroken', e.message);
+    if (e instanceof GhAuthError && /accept/.test(e.message)) { S.gh.token = null; store.set('gh', null); forgetExpiry('sync'); }
   }
   S.cloudBusy = false; renderCloud();
   if (S.cloudAgain) { S.cloudAgain = false; dirty(); }
 }
 const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : new Date(t).toLocaleString(); };
 const TOKEN_URL = 'https://github.com/settings/tokens/new?scopes=gist&description=AniList%20Manga%20Ranker';
+// ── Warnings on the main screen: sync that has stopped working, and sign-ins or tokens about to expire ──
+// AniList's token says when it expires (it's a JWT). GitHub tells in a response header, where the browser lets the
+// page read it; where it doesn't, an expired token shows up as a sync or update error instead.
+function jwtExp(tok) { try { const p = JSON.parse(atob(String(tok).split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); return p.exp > 0 ? p.exp * 1000 : 0; } catch { return 0; } }
+function noteExpiry(kind, v) {
+  if (!v) return;
+  const s = String(v), t = Date.parse(s) || Date.parse(s.replace(' UTC', 'Z').replace(' ', 'T').replace(' ', ''));
+  if (!t) return;
+  const all = store.get('tokenExp', {}); if (all[kind] === t) return;
+  all[kind] = t; store.set('tokenExp', all);
+}
+const forgetExpiry = kind => { const all = store.get('tokenExp', {}); if (all[kind]) { delete all[kind]; store.set('tokenExp', all); } };
+const WARN_DAYS = 14;
+function renderWarn() {
+  const el = $('warn-banner'); if (!el) return;
+  const msgs = [], exp = store.get('tokenExp', {});
+  // A passing network error only counts once sync has been failing for a day.
+  const syncErr = S.cloudErr ? (S.cloudHard || (S.gh?.at && Date.now() - S.gh.at > 864e5) ? S.cloudErr : '') : store.get('syncBroken', '');
+  if (syncErr) msgs.push(`<b>Sync isn't working on this device.</b> ${esc(syncErr)}`);
+  const soon = (t, name, fix) => {
+    if (!t) return; const d = Math.ceil((t - Date.now()) / 864e5); if (d > WARN_DAYS) return;
+    msgs.push(`<b>${name} ${d <= 0 ? 'has expired' : d === 1 ? 'expires tomorrow' : 'expires in ' + d + ' days'}.</b> ${fix}`);
+  };
+  if (S.token) soon(jwtExp(S.token), 'Your AniList sign-in', 'Sign in again in Setup to keep importing and pushing.');
+  if (S.gh?.token) soon(exp.sync, 'Your GitHub sync token', 'Make a new one and paste it in Setup → Sync.');
+  if (store.get('updToken')) soon(exp.upd, 'Your GitHub updates token', 'Make a new one and paste it in Setup → Updates.');
+  el.hidden = !msgs.length;
+  if (!msgs.length) { el.innerHTML = ''; return; }
+  const canDismiss = syncErr && !S.gh?.token && msgs.length === 1;
+  el.innerHTML = `<span>${msgs.join('<br>')}</span><span class="warn-acts"><button id="warn-go">Open Setup</button>${canDismiss ? '<button class="link" id="warn-x">Dismiss</button>' : ''}</span>`;
+  $('warn-go').onclick = () => { store.set('setupSec', 'account'); go('setup'); };
+  $('warn-x')?.addEventListener('click', () => { S.cloudErr = ''; store.set('syncBroken', null); renderWarn(); renderCloud(); });
+}
 function renderCloud() {
+  renderWarn();
   const el = $('cloud-body'); if (!el) return;
   if (S.gh?.token) {
+    const locked = !!S.cloudErr && S.cloudLocked, has = !!S.gh.pass;
     el.innerHTML = `<p>Syncing automatically through a private gist on your GitHub account. ${S.cloudBusy ? 'Syncing…' : S.gh.at ? 'Last synced ' + esc(ago(S.gh.at)) + '.' : ''}</p>
       ${S.cloudErr ? `<div class="note bad">${esc(S.cloudErr)}</div>` : ''}
       <p class="small muted">Picks sync about 15 seconds after you stop, and whenever you open or switch back to this page. Your AniList sign-in is not synced; connect AniList on each device.</p>
-      <div class="actions"><button id="btn-cloud-now" ${S.cloudBusy ? 'disabled' : ''}>Sync now</button><button id="btn-cloud-restore">Restore an earlier version</button><button id="btn-cloud-off">Stop syncing on this device</button></div>`;
+      <div class="actions"><button id="btn-cloud-now" ${S.cloudBusy ? 'disabled' : ''}>Sync now</button><button id="btn-cloud-restore">Restore an earlier version</button><button id="btn-cloud-off">Stop syncing on this device</button></div>
+      <h3 style="margin:16px 0 4px;font-size:15px">Encryption</h3>
+      <p class="small muted">${locked ? 'The sync file is encrypted. Enter the passphrase you set on your other device.'
+        : has ? 'The sync file is encrypted with the passphrase saved on this device. GitHub only sees scrambled text. Your other devices need the same passphrase.'
+        : 'Optional: set a passphrase and the sync file is encrypted on this device before it goes to GitHub, so nobody with the gist\'s link can read your list. You then enter the same passphrase once on each device, and every device needs this version of the app or newer.'}</p>
+      <div class="inline"><input type="text" id="gh-pass" autocomplete="off" spellcheck="false" placeholder="${has && !locked ? 'New passphrase' : 'Passphrase'}"><button id="btn-pass" ${S.cloudBusy ? 'disabled' : ''}>${locked ? 'Unlock' : has ? 'Change passphrase' : 'Encrypt the sync file'}</button></div>
+      <p class="small muted">There is no way to recover a forgotten passphrase, but your picks are also on each device: delete the gist on GitHub, set a new passphrase here, and this device starts a fresh sync file. Deleting the gist is also how you clear versions that were saved before encryption; they stay readable in its history otherwise.</p>`;
     $('btn-cloud-now').onclick = cloudSync; $('btn-cloud-restore').onclick = openRestore;
-    $('btn-cloud-off').onclick = () => { S.gh = null; store.set('gh', null); renderCloud(); toast('This device no longer syncs. Your picks here are kept.'); };
+    $('btn-cloud-off').onclick = () => { S.gh = null; S.cloudErr = ''; store.set('gh', null); store.set('syncBroken', null); forgetExpiry('sync'); renderCloud(); toast('This device no longer syncs. Your picks here are kept.'); };
+    $('btn-pass').onclick = () => {
+      const v = $('gh-pass').value.trim(); if (!v) { $('gh-pass').focus(); return; }
+      if (!canEncrypt()) { toast("This browser can't encrypt the sync file"); return; }
+      // Changing a working passphrase: the file is opened with the old one first, then saved with the new one.
+      if (has && !locked) S.gh.newPass = v; else S.gh.pass = v;
+      store.set('gh', S.gh.remember ? S.gh : null); cloudSync();
+    };
     return;
   }
   el.innerHTML = `${S.cloudErr ? `<div class="note bad">${esc(S.cloudErr)}</div>` : ''}
@@ -3021,11 +3117,15 @@ function renderCloud() {
     </ol>
     <div class="field"><span>GitHub token</span><input type="text" id="gh-tok" autocomplete="off" spellcheck="false" placeholder="ghp_…"></div>
     <label class="row small"><input type="checkbox" id="gh-remember" checked><span>Remember on this device, so it keeps syncing next time. The token can only read and write your gists.</span></label>
+    <div class="field"><span>Passphrase (optional)</span><input type="text" id="gh-pass-new" autocomplete="off" spellcheck="false" placeholder="Leave empty for no encryption"></div>
     <div class="actions"><button class="primary" id="btn-cloud-on">Start syncing</button></div>
-    <p class="small muted">A private gist is unlisted, not encrypted: anyone who has its exact link could read your manga list and picks. It holds nothing else.</p>`;
+    <p class="small muted">A private gist is unlisted: without a passphrase, anyone who has its exact link could read your manga list and picks (it holds nothing else). With a passphrase the file is encrypted on this device first; use the same passphrase on every device.</p>`;
   $('btn-cloud-on').onclick = () => {
     const t = $('gh-tok').value.trim(); if (!t) { $('gh-tok').focus(); return; }
-    S.gh = { token: t, id: null, at: 0, remember: $('gh-remember').checked }; store.set('gh', S.gh.remember ? S.gh : null);
+    const pass = $('gh-pass-new').value.trim();
+    if (pass && !canEncrypt()) { toast("This browser can't encrypt the sync file"); return; }
+    S.gh = { token: t, id: null, at: 0, remember: $('gh-remember').checked }; if (pass) S.gh.pass = pass;
+    forgetExpiry('sync'); store.set('gh', S.gh.remember ? S.gh : null);
     cloudSync();
   };
 }
@@ -3051,7 +3151,9 @@ async function checkUpdate(manual) {
   try {
     const url = `https://api.github.com/repos/${APP_REPO}/releases/latest`;
     const r = IS_APP ? await http().get({ url, headers: ghHeaders() })
-      : await fetch(url, { headers: ghHeaders(), cache: 'no-store' }).then(async x => ({ status: x.status, data: x.status === 200 ? await x.json() : null }));
+      : await fetch(url, { headers: ghHeaders(), cache: 'no-store' }).then(async x => ({ status: x.status, data: x.status === 200 ? await x.json() : null, headers: { 'github-authentication-token-expiration': x.headers.get('github-authentication-token-expiration') } }));
+    const rh = r.headers || {}, expKey = Object.keys(rh).find(k => k.toLowerCase() === 'github-authentication-token-expiration');
+    if (expKey) noteExpiry('upd', rh[expKey]);
     if (r.status === 401) throw new Error('GitHub did not accept the token. It may have expired; make a new one.');
     if (r.status === 404) throw new Error(`The token can't see ${APP_REPO}. Make sure it has access to that repository with Contents: Read-only.`);
     if (r.status !== 200) throw new Error('GitHub answered ' + r.status);
@@ -3111,8 +3213,8 @@ function renderUpdates(msg) {
       <div class="inline"><input type="text" id="upd-tok" placeholder="github_pat_…" autocomplete="off" spellcheck="false"><button class="primary" id="upd-save">Save</button></div>`}`;
   $('upd-go')?.addEventListener('click', installUpdate);
   $('upd-check')?.addEventListener('click', () => checkUpdate(true));
-  $('upd-forget')?.addEventListener('click', () => { store.set('updToken', null); UPD.latest = null; renderUpdates(); });
-  $('upd-save')?.addEventListener('click', () => { const t = $('upd-tok').value.trim(); if (!t) return; store.set('updToken', t); checkUpdate(true); });
+  $('upd-forget')?.addEventListener('click', () => { store.set('updToken', null); forgetExpiry('upd'); UPD.latest = null; renderUpdates(); });
+  $('upd-save')?.addEventListener('click', () => { const t = $('upd-tok').value.trim(); if (!t) return; store.set('updToken', t); forgetExpiry('upd'); checkUpdate(true); });
 }
 if (APP_REPO) {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
@@ -3148,6 +3250,7 @@ go(rankedIds().length >= 2 ? 'compare' : 'setup');
 if (S.token && !S.viewer) connect(S.token, !!store.get('token'));
 if (S.gh?.token) cloudSync();
 if (S.viewer && S.token) checkRecent(true);
+renderWarn();
 window.APP_READY = true;
 </script>
 <script>
