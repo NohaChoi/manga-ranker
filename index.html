@@ -30,7 +30,8 @@ header h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
 .acct { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
 .acct img { width: 26px; height: 26px; border-radius: 50%; }
 .tabs { display: flex; gap: 4px; background: var(--soft); border-radius: 10px; padding: 4px; }
-.tabs button { flex: 1; border: 0; background: none; padding: 8px 2px; font-weight: 600; font-size: 13px; color: var(--muted); border-radius: 7px; }
+.tabs button { flex: 1; border: 0; background: none; padding: 8px 2px; font-weight: 600; font-size: 13px; color: var(--muted); border-radius: 7px; justify-content: center; position: relative; }
+.tabs svg { display: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .tabs button[aria-selected="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 .tabs .badge { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-size: 11px; line-height: 18px; font-variant-numeric: tabular-nums; }
 .segs { display: none; }
@@ -38,9 +39,16 @@ header h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
   /* Phones: tabs along the bottom, within thumb reach, and Setup in three short sections. */
   .tabs { order: 3; margin: 0 calc(-1 * max(16px, env(safe-area-inset-left, 0px))); border-radius: 0; border-top: 1px solid var(--line); background: var(--card);
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px)); }
-  .tabs button { padding: 10px 2px; }
-  .tabs button[aria-selected="true"] { background: var(--soft); box-shadow: none; color: var(--ink); }
-  main { padding-bottom: 20px !important; }
+  .tabs button { padding: 6px 2px 5px; flex-direction: column; gap: 2px; font-size: 11px; }
+  .tabs svg { display: block; }
+  .tabs .badge { position: absolute; top: 1px; left: calc(50% + 10px); margin: 0; }
+  .tabs button[aria-selected="true"] { background: none; box-shadow: none; color: var(--accent); }
+  main { padding-bottom: 20px !important; display: flex; flex-direction: column; }
+  main > * { flex: none; }
+  /* Compare fills the screen, with Undo / Too close / Skip at the bottom, in thumb reach. */
+  main > #v-compare { flex: 1 0 auto; }
+  #cmp-live { flex: 1; display: flex; flex-direction: column; }
+  #cmp-live .controls { margin-top: auto; padding-top: 12px; }
   .toast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important; }
   .segs { display: flex; gap: 4px; background: var(--soft); border-radius: 10px; padding: 4px; margin: 0 0 14px; position: sticky; top: 0; z-index: 2; }
   .segs button { flex: 1; border: 0; background: none; padding: 8px 2px; font-weight: 600; font-size: 13px; color: var(--muted); border-radius: 7px; }
@@ -81,13 +89,16 @@ ol.steps { margin: 6px 0 0; padding-left: 20px; font-size: 14px; } ol.steps li {
 .meter .bar { flex: 1; height: 6px; background: var(--soft); border-radius: 3px; overflow: hidden; }
 .meter .bar i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .4s; }
 .prompt { text-align: center; font-weight: 700; font-size: 18px; }
-.duel { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+/* The pair is never wider than lets both covers, at their real 2:3 shape, fit above the buttons without scrolling. */
+.duel { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; width: 100%; max-width: max(280px, calc((100dvh - 410px) * 4 / 3 + 14px)); margin-inline: auto; }
+.controls { margin-top: 12px; }
+details.more { font-size: 13px; color: var(--muted); margin-top: 10px; } details.more summary { cursor: pointer; color: var(--accent); width: fit-content; } details.more[open] summary { margin-bottom: 6px; } details.more p:last-child { margin-bottom: 0; }
 .side { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
 .side .forget { align-self: center; }
 .forget { border: 0; background: none; padding: 4px 6px; font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
 .forget:hover { color: var(--ink); }
 .pick { display: flex; flex-direction: column; align-items: center; gap: 8px; border: 0; background: none; padding: 0; min-width: 0; width: 100%; }
-.cover { width: 100%; aspect-ratio: 2 / 3; max-height: 58dvh; border-radius: 10px; overflow: hidden; background: var(--soft); border: 1px solid var(--line);
+.cover { width: 100%; aspect-ratio: 2 / 3; border-radius: 10px; overflow: hidden; background: var(--soft); border: 1px solid var(--line);
   transition: transform .14s, opacity .14s, box-shadow .14s; }
 .cover img, .pick { -webkit-touch-callout: none; }
 .about-cover { width: 64px; height: 96px; } .about-tags { margin: 6px 0; } .about-desc { white-space: pre-line; margin: 8px 0 4px; max-height: 40dvh; overflow: auto; }
@@ -202,7 +213,8 @@ ol.ilist.num { counter-reset: n; } ol.ilist.num li::before { counter-increment: 
 .champ { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; margin: 8px 0; }
 .champ .ccover { width: 160px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 10px; box-shadow: 0 0 0 4px var(--accent); background: var(--soft); } .champ b { font-size: 20px; }
 /* ranking: community */
-.rank-tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; } .rank-tools .seg { margin: 0; }
+.rank-tools { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; } .rank-tools .seg { margin: 0 auto 0 0; }
+.rf-row #rank-count { margin-left: auto; text-align: right; } #btn-legend { padding: 4px 11px; border-radius: 999px; font-weight: 700; color: var(--muted); }
 .crowd { white-space: nowrap; }
 .ctag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
 .ctag.gem { background: var(--info-bg); color: var(--accent); } .ctag.miss { background: var(--warn-bg); color: var(--warn); }
@@ -261,11 +273,11 @@ body.sheet-open { overflow: hidden; }
     <div class="acct" id="acct"></div>
   </header>
   <nav class="tabs" role="tablist">
-    <button role="tab" data-view="compare" id="tab-compare">Compare</button>
-    <button role="tab" data-view="ranking" id="tab-ranking">Ranking</button>
-    <button role="tab" data-view="insights" id="tab-insights">Insights</button>
-    <button role="tab" data-view="push" id="tab-push">Push<span class="badge" id="push-badge" hidden></span></button>
-    <button role="tab" data-view="setup" id="tab-setup">Setup</button>
+    <button role="tab" data-view="compare" id="tab-compare"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="7.5" height="14" rx="1.5"/><rect x="13.5" y="5" width="7.5" height="14" rx="1.5"/></svg>Compare</button>
+    <button role="tab" data-view="ranking" id="tab-ranking"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>Ranking</button>
+    <button role="tab" data-view="insights" id="tab-insights"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Insights</button>
+    <button role="tab" data-view="push" id="tab-push"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>Push<span class="badge" id="push-badge" hidden></span></button>
+    <button role="tab" data-view="setup" id="tab-setup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>Setup</button>
   </nav>
   <main>
     <div class="note upd" id="upd-banner" hidden></div>
@@ -282,13 +294,13 @@ body.sheet-open { overflow: hidden; }
           <div class="side"><button class="pick" id="pick-b"><div class="cover"><img id="img-b" alt=""></div><div class="ttl" id="ttl-b"></div><div class="meta" id="meta-b"></div></button>
             <div class="side-links"><button class="forget" id="forget-b">Forgot this one</button><button class="forget" id="edit-b">Edit</button></div></div>
         </div>
-        <div class="controls" style="margin-top:12px">
+        <div class="controls">
           <button id="btn-undo" disabled>Undo <kbd>Z</kbd></button>
           <button id="btn-tie">Too close <kbd>↓</kbd></button>
           <button id="btn-skip">Skip <kbd>Space</kbd></button>
         </div>
-        <p class="focus" id="focus-line" style="margin-top:10px"></p>
-        <p class="focus" id="tour-start-line"><button class="link" id="btn-tour">Start a tournament</button><span class="swipe-tip"> · Swipe toward the one you prefer: up to skip, down for too close</span> · Hold a cover for details</p>
+        <p class="focus" id="focus-line" style="margin:10px 0 4px"></p>
+        <p class="focus" id="tour-start-line" style="margin:0">Hold a cover for details<span class="swipe-tip"> · Swipe to pick (up skips, down is too close)</span> · <button class="link" id="btn-tour">Start a tournament</button></p>
       </div>
       <div class="empty" id="cmp-empty" hidden>
         <h2>Import your AniList list to start</h2>
@@ -299,14 +311,13 @@ body.sheet-open { overflow: hidden; }
 
     <!-- RANKING -->
     <section class="view" id="v-ranking" hidden>
-      <div class="legend"><span><span class="dot s"></span>Confident for now</span><span><span class="dot u"></span>Could still move</span><span><span class="dot r"></span>In Elo hell</span><span>Right column: new score, and the AniList score when it differs</span><span>Community: AniList's average for the title</span></div>
-      <div class="rank-tools"><div class="seg" id="rank-mode" role="group" aria-label="Show as"><button data-mode="list">List</button><button data-mode="tiers">Tiers</button></div><button id="btn-rank-share">Share image</button></div>
+      <div class="rank-tools"><div class="seg" id="rank-mode" role="group" aria-label="Show as"><button data-mode="list">List</button><button data-mode="tiers">Tiers</button></div><button id="btn-recommend">Recommend</button><button id="btn-rank-share" aria-label="Share image">Share</button></div>
       <div id="rank-filters">
         <div class="chips" id="rank-views" hidden></div>
         <div class="rf-row"><input type="search" id="rank-q" placeholder="Search titles" autocomplete="off" spellcheck="false"><button id="btn-filters">Filters</button></div>
-        <div class="rf-row"><label class="small muted rf-sort">Sort <select id="rank-sort"></select></label><button id="btn-recommend">Recommend</button></div>
+        <div class="rf-row"><label class="small muted rf-sort">Sort <select id="rank-sort"></select></label><p class="small muted" id="rank-count"></p><button id="btn-legend" aria-expanded="false" aria-controls="rank-legend" aria-label="What the dots and numbers mean" title="What the dots and numbers mean">?</button></div>
+        <div class="legend" id="rank-legend" hidden><span><span class="dot s"></span>Confident for now</span><span><span class="dot u"></span>Could still move</span><span><span class="dot r"></span>In Elo hell</span><span>Right column: new score, and the AniList score when it differs</span><span>Community: AniList's average for the title</span></div>
         <div class="chips" id="rank-active"></div>
-        <p class="small muted" id="rank-count"></p>
       </div>
       <ol class="board" id="board"></ol>
       <div id="tierlist" hidden></div>
@@ -332,18 +343,6 @@ body.sheet-open { overflow: hidden; }
     <!-- PUSH -->
     <section class="view" id="v-push" hidden>
       <div class="card">
-        <h2>Turning your ranking into scores</h2>
-        <div class="radio" id="style-radios">
-          <label><input type="radio" name="style" value="keep"><span><b>Keep my current spread.</b> Uses the same scores you already hand out, in the same amounts, and only changes which title gets which.</span></label>
-          <label><input type="radio" name="style" value="even"><span><b>Even spread.</b> Scores step down evenly from top to bottom.</span></label>
-          <label><input type="radio" name="style" value="bell"><span><b>Bell curve.</b> Most titles near the middle, few at the extremes.</span></label>
-        </div>
-        <div class="range" id="range-row" style="margin-top:10px">Scores from <input type="number" id="r-min"> to <input type="number" id="r-max"> <span class="muted" id="fmt-label"></span></div>
-        <div class="hist" id="hist" aria-hidden="true"></div>
-        <div class="histx" id="histx" aria-hidden="true"></div>
-        <p class="small muted" style="margin-top:6px">Outline: your scores on AniList now. Filled: scores after pushing.</p>
-      </div>
-      <div class="card">
         <h2>Ready to push</h2>
         <div class="stats">
           <div class="stat"><b id="st-ready">0</b><span>clearly wrong on AniList now</span></div>
@@ -357,6 +356,18 @@ body.sheet-open { overflow: hidden; }
         </div>
         <div id="push-status"></div>
         <ul class="changes" id="changes"></ul>
+      </div>
+      <div class="card">
+        <h2>How your ranking becomes scores</h2>
+        <div class="radio" id="style-radios">
+          <label><input type="radio" name="style" value="keep"><span><b>Keep my current spread.</b> Uses the same scores you already hand out, in the same amounts, and only changes which title gets which.</span></label>
+          <label><input type="radio" name="style" value="even"><span><b>Even spread.</b> Scores step down evenly from top to bottom.</span></label>
+          <label><input type="radio" name="style" value="bell"><span><b>Bell curve.</b> Most titles near the middle, few at the extremes.</span></label>
+        </div>
+        <div class="range" id="range-row" style="margin-top:10px">Scores from <input type="number" id="r-min"> to <input type="number" id="r-max"> <span class="muted" id="fmt-label"></span></div>
+        <div class="hist" id="hist" aria-hidden="true"></div>
+        <div class="histx" id="histx" aria-hidden="true"></div>
+        <p class="small muted" style="margin-top:6px">Outline: your scores on AniList now. Filled: scores after pushing.</p>
       </div>
       <div class="card" id="plan-card" hidden>
         <h2>Other changes to send</h2>
@@ -378,10 +389,13 @@ body.sheet-open { overflow: hidden; }
       <div class="card" id="c-connect" data-sec="account"><h2>1. Connect AniList</h2><div id="connect-body"></div></div>
       <div class="card" data-sec="account">
         <h2>2. Import your manga</h2>
-        <p class="small muted">Reads your list in one request per 500 entries. Run it again any time to pick up new titles and status changes; your picks are kept. What gets ranked is set in <b>Ranking rules</b>.</p>
+        <p class="small muted">Run it again any time to pick up new titles and status changes; your picks are kept.</p>
         <div class="actions"><button class="primary" id="btn-sync" disabled>Import from AniList</button><span class="small muted" id="sync-info"></span></div>
         <div id="sync-status"></div>
-        <p class="small muted" id="recent-info" style="margin-top:10px"></p>
+        <details class="more"><summary>More about this</summary>
+          <p>Reads your list in one request per 500 entries. What gets ranked is set in <b>Ranking rules</b>.</p>
+          <p id="recent-info"></p>
+        </details>
       </div>
       <div class="card" data-sec="rules">
         <h2>Ranking rules</h2>
@@ -391,10 +405,13 @@ body.sheet-open { overflow: hidden; }
           <div class="range"><input type="number" id="opt-minch" min="0" max="50" step="1"> chapters <span class="muted">(Planning titles are always left out; Completed and Rereading always count)</span></div>
           <span class="small muted" id="minch-info" style="font-weight:400"></span></div>
         <label class="row small"><input type="checkbox" id="opt-zero"><span>Treat <b>0 chapters</b> as "not logged": titles you marked as read without entering chapters still count as read. Only 1 or 2 logged chapters count as barely read. <span class="muted" id="zero-info"></span></span></label>
-        <label class="row small"><input type="checkbox" id="opt-hell"><span><b>Elo hell</b>: your bottom tier, found where your ratings naturally separate (so it grows and shrinks with your list, up to half of it). Once a title is clearly in it, Compare stops refining its exact place and rarely shows it. Titles that start winning climb out on their own; rereads and "My opinion changed" bring one back too. Scores still go to AniList.</span></label>
+        <label class="row small"><input type="checkbox" id="opt-hell"><span><b>Elo hell</b>: stop refining the exact order of your bottom tier, and rarely show those titles in Compare.</span></label>
         <label class="row small"><input type="checkbox" id="opt-autoplan"><span>Move titles with fewer chapters read than this to <b>Planning</b> on AniList (Reading, Paused and Dropped only; sent with your next push)</span></label>
         <label class="row small"><input type="checkbox" id="opt-prior"><span>Start from my current AniList scores, so the first picks refine your list instead of starting from zero</span></label>
-        <p class="small muted" style="margin-top:12px">Nothing is ever locked in. Compare now and then re-checks titles it is confident about. One surprising pick only nudges a title; a run of them, or one very big upset (say your #70 beating your #3), makes it uncertain again and Compare finds its new place in a few picks. A title that keeps winning (or losing) more than expected moves in bigger steps until it stops. Rereading a title, or reading a lot more of it since the last import, also reopens it.</p>
+        <details class="more"><summary>How the ranking adapts</summary>
+          <p>Nothing is ever locked in. Compare now and then re-checks titles it is confident about. One surprising pick only nudges a title; a run of them, or one very big upset (say your #70 beating your #3), makes it uncertain again and Compare finds its new place in a few picks. A title that keeps winning (or losing) more than expected moves in bigger steps until it stops. Rereading a title, or reading a lot more of it since the last import, also reopens it.</p>
+          <p><b>Elo hell</b> is your bottom tier, found where your ratings naturally separate (so it grows and shrinks with your list, up to half of it). Once a title is clearly in it, Compare stops refining its exact place. Titles that start winning climb out on their own; rereads and "My opinion changed" bring one back too. Scores still go to AniList.</p>
+        </details>
       </div>
       <div class="card" data-sec="rules"><h2>Check your links</h2><div id="link-check"></div></div>
       <div class="card" id="c-cloud" data-sec="account"><h2>3. Sync between devices</h2><div id="cloud-body"></div></div>
@@ -406,13 +423,13 @@ body.sheet-open { overflow: hidden; }
       </div>
       <div class="card" data-sec="data">
         <h2>Something looks off?</h2>
-        <p class="small muted">Copies a short report to paste into your chat with Claude: app version, settings, counts and recent errors. It never includes your sign-ins or tokens.</p>
+        <p class="small muted">Copies a short report to paste into your chat with Claude. It never includes your sign-ins or tokens.</p>
         <div class="actions"><button id="btn-diag">Copy diagnostics</button></div>
         <textarea id="diag-out" hidden readonly></textarea>
       </div>
       <div class="card" data-sec="data">
         <h2>Backup file</h2>
-        <p class="small muted">Picks are saved in this browser as you make them. A backup file is the manual way to move them: save it here, open it on the other browser or device with Load backup, and it merges with what is there. Nothing is lost if both sides have picks.</p>
+        <p class="small muted">The manual way to move your picks: save a file here and open it on another device with Load backup. The two merge, so nothing is lost.</p>
         <div class="actions">
           <button id="btn-export">Save backup</button>
           <label class="btn" for="file-import">Load backup</label><input type="file" id="file-import" accept=".json,application/json" hidden>
@@ -779,7 +796,7 @@ const store = {
   kind: () => (STORE.db ? 'IndexedDB' : 'localStorage'),
 };
 // ── Error log, for "Copy diagnostics" ──
-const BUILD = '2026-11-10a';
+const BUILD = '2026-11-10b';
 const ERRS = store.get('errors', []);
 function logError(msg) { ERRS.push({ t: Date.now(), m: String(msg).slice(0, 300) }); while (ERRS.length > 30) ERRS.shift(); store.set('errors', ERRS); }
 addEventListener('error', e => logError(`${e.message} (line ${e.lineno})`));
@@ -1052,7 +1069,7 @@ function renderBoard() {
   const board = $('board'); board.textContent = '';
   const mode = S.settings.rankMode || 'list';
   document.querySelectorAll('#rank-mode button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
-  $('tierlist').hidden = mode !== 'tiers'; board.hidden = mode === 'tiers'; $('rank-filters').hidden = mode === 'tiers'; document.querySelector('#v-ranking .legend').hidden = mode === 'tiers';
+  $('tierlist').hidden = mode !== 'tiers'; board.hidden = mode === 'tiers'; $('rank-filters').hidden = mode === 'tiers';   // the legend (behind the ? button) sits inside rank-filters
   if (mode === 'tiers' && rankedIds().length) { renderTiers(); renderAcct(); return; }
   if (!rankedIds().length) { board.innerHTML = '<li class="empty"><h2>Nothing to rank yet</h2><p class="muted">Import your list in Setup.</p></li>'; renderAcct(); return; }
   const p = freshPlan(), f = p.f, gaps = crowdGaps(p.rows), rows = filterRows(p.rows);
@@ -1216,6 +1233,7 @@ $('rank-q').addEventListener('input', e => { clearTimeout(rqTimer); rqTimer = se
 $('rank-sort').innerHTML = SORTS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
 $('rank-sort').onchange = e => { RF.sort = e.target.value; renderBoard(); };
 $('btn-filters').onclick = () => openFilters();
+$('btn-legend').onclick = () => { const l = $('rank-legend'); l.hidden = !l.hidden; $('btn-legend').setAttribute('aria-expanded', String(!l.hidden)); };
 $('btn-recommend').onclick = () => openRecommend();
 // The filter sheet: every group with counts. Counts show how many titles you'd get by adding that option.
 let fsTagQ = '', fsAllTags = false;
@@ -3089,14 +3107,17 @@ function renderCloud() {
     const locked = !!S.cloudErr && S.cloudLocked, has = !!S.gh.pass;
     el.innerHTML = `<p>Syncing automatically through a private gist on your GitHub account. ${S.cloudBusy ? 'Syncing…' : S.gh.at ? 'Last synced ' + esc(ago(S.gh.at)) + '.' : ''}</p>
       ${S.cloudErr ? `<div class="note bad">${esc(S.cloudErr)}</div>` : ''}
-      <p class="small muted">Picks sync about 15 seconds after you stop, and whenever you open or switch back to this page. Your AniList sign-in is not synced; connect AniList on each device.</p>
       <div class="actions"><button id="btn-cloud-now" ${S.cloudBusy ? 'disabled' : ''}>Sync now</button><button id="btn-cloud-restore">Restore an earlier version</button><button id="btn-cloud-off">Stop syncing on this device</button></div>
       <h3 style="margin:16px 0 4px;font-size:15px">Encryption</h3>
       <p class="small muted">${locked ? 'The sync file is encrypted. Enter the passphrase you set on your other device.'
         : has ? 'The sync file is encrypted with the passphrase saved on this device. GitHub only sees scrambled text. Your other devices need the same passphrase.'
-        : 'Optional: set a passphrase and the sync file is encrypted on this device before it goes to GitHub, so nobody with the gist\'s link can read your list. You then enter the same passphrase once on each device, and every device needs this version of the app or newer.'}</p>
+        : 'Optional: set a passphrase and the sync file is encrypted before it goes to GitHub. Enter the same passphrase once on each device.'}</p>
       <div class="inline"><input type="text" id="gh-pass" autocomplete="off" spellcheck="false" placeholder="${has && !locked ? 'New passphrase' : 'Passphrase'}"><button id="btn-pass" ${S.cloudBusy ? 'disabled' : ''}>${locked ? 'Unlock' : has ? 'Change passphrase' : 'Encrypt the sync file'}</button></div>
-      <p class="small muted">There is no way to recover a forgotten passphrase, but your picks are also on each device: delete the gist on GitHub, set a new passphrase here, and this device starts a fresh sync file. Deleting the gist is also how you clear versions that were saved before encryption; they stay readable in its history otherwise.</p>`;
+      <details class="more"><summary>More about sync and encryption</summary>
+        <p>Picks sync about 15 seconds after you stop, and whenever you open or switch back to this page. Your AniList sign-in is not synced; connect AniList on each device.</p>
+        <p>With a passphrase, nobody with the gist's link can read your list. Every device needs version 1.0.10 of the app or newer to open an encrypted file.</p>
+        <p>There is no way to recover a forgotten passphrase, but your picks are also on each device: delete the gist on GitHub, set a new passphrase here, and this device starts a fresh sync file. Deleting the gist is also how you clear versions that were saved before encryption; they stay readable in its history otherwise.</p>
+      </details>`;
     $('btn-cloud-now').onclick = cloudSync; $('btn-cloud-restore').onclick = openRestore;
     $('btn-cloud-off').onclick = () => { S.gh = null; S.cloudErr = ''; store.set('gh', null); store.set('syncBroken', null); forgetExpiry('sync'); renderCloud(); toast('This device no longer syncs. Your picks here are kept.'); };
     $('btn-pass').onclick = () => {
