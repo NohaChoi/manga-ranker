@@ -297,10 +297,9 @@ body.sheet-open { overflow: hidden; }
         <div class="controls">
           <button id="btn-undo" disabled>Undo <kbd>Z</kbd></button>
           <button id="btn-tie">Too close <kbd>↓</kbd></button>
-          <button id="btn-skip">Skip <kbd>Space</kbd></button>
         </div>
         <p class="focus" id="focus-line" style="margin:10px 0 4px"></p>
-        <p class="focus" id="tour-start-line" style="margin:0">Hold a cover for details<span class="swipe-tip"> · Swipe to pick (up skips, down is too close)</span> · <button class="link" id="btn-tour">Start a tournament</button></p>
+        <p class="focus" id="tour-start-line" style="margin:0">Hold a cover for details<span class="swipe-tip"> · Swipe to pick (down is too close)</span> · <button class="link" id="btn-tour">Start a tournament</button></p>
       </div>
       <div class="empty" id="cmp-empty" hidden>
         <h2>Import your AniList list to start</h2>
@@ -796,7 +795,7 @@ const store = {
   kind: () => (STORE.db ? 'IndexedDB' : 'localStorage'),
 };
 // ── Error log, for "Copy diagnostics" ──
-const BUILD = '2026-11-10b';
+const BUILD = '2026-11-12a';
 const ERRS = store.get('errors', []);
 function logError(msg) { ERRS.push({ t: Date.now(), m: String(msg).slice(0, 300) }); while (ERRS.length > 30) ERRS.shift(); store.set('errors', ERRS); }
 addEventListener('error', e => logError(`${e.message} (line ${e.lineno})`));
@@ -889,7 +888,9 @@ function buildPlan() {
     // tier and the next. Its exact place among your least favorites doesn't matter, so it's rarely shown and its
     // current score estimate is good enough.
     const lively = !it.placeAt && (R[id].p || 0) < ALARM_AT;
-    const rest = hell != null && R[id].mu + 0.8 * R[id].sigma < hell && lively;
+    // Also resting: a title rated below the line that you've called "too close" three or more times. It keeps
+    // tying with your other least favorites and hasn't beaten its way out, so that's settled enough.
+    const rest = hell != null && lively && (R[id].mu + 0.8 * R[id].sigma < hell || (R[id].mu < hell && R[id].d >= 3));
     // Probably in Elo hell but not proven yet: compared a little, just enough to confirm it.
     const lowish = hell != null && !rest && R[id].mu < hell && lively;
     return { id, rank: i + 1, target, settled: settled || rest, rest, lowish, changed, top, bottom, state: !changed ? 'ok' : confident || rest ? 'ready' : 'settling' };
@@ -1006,6 +1007,9 @@ function choose(result) {
       if (pObserved >= 0.5 || --S.chain.left <= 0 || (S.chain.id !== winner && lowZone(S.chain.id))) S.chain = null;
     }
   }
+  // "Too close" on the title being followed ends the follow-up: a tie says it's about where it belongs. (Without
+  // this the follow-up never ended while you kept answering "too close", so the same title came back every pick.)
+  else if (S.chain && (S.chain.id === ev.a || S.chain.id === ev.b)) { S.chain = null; S.followUps = []; }
   if (result === 'a' || result === 'b') { $(result === 'a' ? 'pick-a' : 'pick-b').classList.add('win'); $(result === 'a' ? 'pick-b' : 'pick-a').classList.add('lose'); }
   // The plan (rank → score, settled check) is O(n²); refresh it every few picks, not every pick.
   if (S.plan) { const behind = S.events.length - S.plan.built; S.plan.events = S.events.length; if (behind >= 6) schedulePlan(); } else schedulePlan();
@@ -1054,12 +1058,12 @@ $('pick-a').onclick = () => { if (Date.now() - swipedAt > 400) choose('a'); }; $
 $('btn-tour').onclick = () => (tourOn() ? toast('A tournament is already running') : openTourSetup());
 $('forget-a').onclick = () => forget('a'); $('forget-b').onclick = () => forget('b');
 $('edit-a').onclick = () => S.pair && openEdit(S.pair[0]); $('edit-b').onclick = () => S.pair && openEdit(S.pair[1]);
-$('btn-tie').onclick = () => choose('tie'); $('btn-skip').onclick = () => choose('skip'); $('btn-undo').onclick = undo;
+$('btn-tie').onclick = () => choose('tie'); $('btn-undo').onclick = undo;   // Skip was removed (Nov 2026); old skips in the history still read fine
 document.addEventListener('keydown', e => {
   if (e.target.matches('input, textarea, select')) return;
   if (e.key === 'z' || e.key === 'Z' || e.key === 'Backspace') { e.preventDefault(); undo(); return; }
   if (S.view !== 'compare') return;
-  const m = { ArrowLeft: 'a', ArrowRight: 'b', ArrowDown: 'tie', ' ': 'skip' }[e.key];
+  const m = { ArrowLeft: 'a', ArrowRight: 'b', ArrowDown: 'tie' }[e.key];
   if (m) { e.preventDefault(); choose(m); }
 });
 
@@ -2350,7 +2354,7 @@ function openAbout(id, fromCompare) {
 })();
 
 // ═════════════════════ Swipe to pick ═════════════════════
-// Swipe toward the cover you prefer; up = skip, down = too close. Taps still work.
+// Swipe toward the cover you prefer; down = too close. Taps still work.
 let swipedAt = 0;
 (function () {
   const el = document.querySelector('.duel'); let sx = 0, sy = 0, pid = null;
@@ -2361,14 +2365,13 @@ let swipedAt = 0;
     const dx = e.clientX - sx, dy = e.clientY - sy, h = Math.abs(dx) > Math.abs(dy);
     el.style.transform = `translate(${h ? dx * 0.3 : 0}px, ${h ? 0 : dy * 0.3}px)`;
     el.classList.toggle('lean-a', h && dx < -50); el.classList.toggle('lean-b', h && dx > 50);
-    el.classList.toggle('lean-up', !h && dy < -50 && !tourOn()); el.classList.toggle('lean-down', !h && dy > 50 && !tourOn());
+    el.classList.toggle('lean-down', !h && dy > 50 && !tourOn());
   });
   const end = e => {
     if (e.pointerId !== pid) return;
     const dx = e.clientX - sx, dy = e.clientY - sy, h = Math.abs(dx) > Math.abs(dy); reset();
     let r = null;
     if (h && Math.abs(dx) > 70) r = dx < 0 ? 'a' : 'b';
-    else if (!h && dy < -80 && !tourOn()) r = 'skip';
     else if (!h && dy > 80 && !tourOn()) r = 'tie';
     if (r) { swipedAt = Date.now(); choose(r); }
   };
