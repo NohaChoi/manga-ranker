@@ -219,6 +219,7 @@ ol.ilist.num { counter-reset: n; } ol.ilist.num li::before { counter-increment: 
 .ctag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
 .ctag.gem { background: var(--info-bg); color: var(--accent); } .ctag.miss { background: var(--warn-bg); color: var(--warn); }
 /* taste profile */
+.alist .iname small { display: block; font-weight: 400; } .alist .iname b + small { display: inline; }
 .tsum p { margin: 6px 0; font-size: 14px; } .tchip { display: inline-block; background: var(--soft); border-radius: 999px; padding: 1px 9px; margin: 2px 2px 2px 0; font-size: 13px; }
 .tchart { display: grid; gap: 4px; } .trow { display: grid; grid-template-columns: minmax(90px, 34%) 1fr 3em; align-items: center; gap: 8px; font-size: 13px; }
 .tlab { text-align: right; overflow-wrap: anywhere; } .tlab small { color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -327,6 +328,7 @@ body.sheet-open { overflow: hidden; }
       <div class="empty" id="in-empty" hidden><h2>Nothing to show yet</h2><p class="muted">Import your list in Setup and make some picks.</p></div>
       <div id="in-cards">
         <div class="card"><h2>Taste profile</h2><div id="in-taste"></div></div>
+        <div class="card"><h2>Authors</h2><p class="small muted">Authors with two or more titles in your ranking, by how high their titles stand on average (100 = your top, 0 = your bottom).</p><div id="in-authors"></div></div>
         <div class="card"><h2>Movers</h2><div id="in-movers"></div></div>
         <div class="card"><h2>Your old scores vs your picks</h2><div id="in-old"></div></div>
         <div class="card"><h2>What to read next</h2><p class="small muted">Your Planning list, ordered by how much you'd probably like each title, learned from the genres and tags of everything you've ranked.</p><div id="in-next"></div></div>
@@ -540,7 +542,7 @@ const pairKey = (a, b) => (a < b ? a + '|' + b : b + '|' + a);
 let PS = null;
 function pairStats(events) {
   if (!PS || PS.arr !== events || events.length < PS.len) {
-    PS = { arr: events, len: 0, seen: new Map(), skipped: new Map(), last: new Map(), tail: [] };
+    PS = { arr: events, len: 0, seen: new Map(), skipped: new Map(), last: new Map(), pairLast: new Map(), tail: [] };
     const ev = byTime(events); PS.sorted = ev; addStats(ev); PS.len = events.length; return PS;
   }
   if (events.length > PS.len) { addStats(events.slice(PS.len)); PS.len = events.length; }
@@ -550,10 +552,18 @@ function addStats(list) {
   for (const e of list) {
     const k = pairKey(e.a, e.b); PS.seen.set(k, (PS.seen.get(k) || 0) + 1);
     if (e.result === 'skip') PS.skipped.set(k, (PS.skipped.get(k) || 0) + 1);
+    else { const pl = PS.pairLast.get(k); if (!pl || pl.t <= e.t) PS.pairLast.set(k, e); }
     if ((PS.last.get(e.a) || 0) < e.t) PS.last.set(e.a, e.t); if ((PS.last.get(e.b) || 0) < e.t) PS.last.set(e.b, e.t);
     PS.tail.push(e); if (PS.tail.length > 8) PS.tail.shift();
   }
 }
+// Second look: tastes change, so an old pick can be asked again, but only for a title the ranking has become a bit
+// unsure about: recent results went against its place (surprise level), or it was reopened or shaken loose after
+// being well compared. Then, half the time, its oldest clear pick from more than six months ago is shown again
+// instead of a new pairing. Asked once: the new answer becomes that pair's latest pick.
+const RECHECK_AGE = 180 * 864e5;
+const unsure = X => (X.p || 0) >= 0.3 || (X.n >= 8 && X.sigma > 0.55 * SIGMA);
+const oldPick = (st, a, b, now = Date.now()) => { const e = st.pairLast.get(pairKey(a, b)); return e && (e.result === 'a' || e.result === 'b') && now - e.t > RECHECK_AGE ? e : null; };
 function choosePair(ids, R, events, { avoid = [], boost = null, focus = null } = {}) {
   ids = ids.filter(id => R[id]);
   if (ids.length < 2) return null;
@@ -584,6 +594,11 @@ function choosePair(ids, R, events, { avoid = [], boost = null, focus = null } =
   for (let i = 0; i < ids.length; i++) { x -= wts[i]; if (x <= 0) { anchor = ids[i]; break; } }
   if (focus && R[focus]) { anchor = focus; recent.delete(focus); }
   const A = R[anchor]; let best = null, bs = -1;
+  if (unsure(A) && (boost?.[anchor] ?? 1) > 0.1 && Math.random() < 0.5) {
+    let old = null; const now = Date.now();
+    for (const id of ids) { if (id === anchor || recent.has(id)) continue; const e = oldPick(st, anchor, id, now); if (e && (!old || e.t < old.e.t)) old = { id, e }; }
+    if (old) return Math.random() < 0.5 ? [anchor, old.id] : [old.id, anchor];
+  }
   for (const id of ids) {
     if (id === anchor) continue;
     const k = pairKey(anchor, id);
@@ -673,7 +688,7 @@ async function fetchViewer(c) {
   return data.Viewer;
 }
 const ENTRY_FIELDS = `id mediaId status raw: score(format: POINT_100) progress repeat private notes updatedAt completedAt { year month day } startedAt { year month day }
-  media { title { userPreferred english romaji } coverImage { large color } format status countryOfOrigin siteUrl chapters genres meanScore popularity isAdult startDate { year } tags { name rank isMediaSpoiler category } }`;
+  media { title { userPreferred english romaji } coverImage { large color } format status countryOfOrigin siteUrl chapters genres meanScore popularity isAdult startDate { year } tags { name rank isMediaSpoiler category } staff(sort: [RELEVANCE, ID], perPage: 4) { edges { role node { id name { full } } } } }`;
 async function fetchList(c, userId) {
   const out = new Map();
   for (let chunk = 1; chunk < 100; chunk++) {
@@ -795,7 +810,7 @@ const store = {
   kind: () => (STORE.db ? 'IndexedDB' : 'localStorage'),
 };
 // ── Error log, for "Copy diagnostics" ──
-const BUILD = '2026-11-12a';
+const BUILD = '2026-11-16a';
 const ERRS = store.get('errors', []);
 function logError(msg) { ERRS.push({ t: Date.now(), m: String(msg).slice(0, 300) }); while (ERRS.length > 30) ERRS.shift(); store.set('errors', ERRS); }
 addEventListener('error', e => logError(`${e.message} (line ${e.lineno})`));
@@ -869,6 +884,7 @@ function hellLine(order, R) {
   const st = ok.reduce((b, x) => (Math.abs((N - x) / N - 0.28) < Math.abs((N - b) / N - 0.28) ? x : b));
   return (mus[st - 1] + mus[st]) / 2;
 }
+const DONE_AT = 0.9;
 function buildPlan() {
   const f = fmt(), ids = rankedIds(), R = S.ratings;
   const order = ids.slice().sort((a, b) => R[b].mu - R[a].mu || R[a].sigma - R[b].sigma);
@@ -895,9 +911,13 @@ function buildPlan() {
     const lowish = hell != null && !rest && R[id].mu < hell && lively;
     return { id, rank: i + 1, target, settled: settled || rest, rest, lowish, changed, top, bottom, state: !changed ? 'ok' : confident || rest ? 'ready' : 'settling' };
   });
+  // The ranking counts as settled once 9 in 10 titles have a settled score. (All of them is the wrong goal: an odd
+  // pick now and then reopens a title or two, so the last few never stay done.) A "picks to go" count was tried and
+  // dropped: in simulated sessions it was off by up to ten times either way.
+  const done = rows.length > 0 && rows.filter(r => !r.settled).length <= Math.floor(rows.length * (1 - DONE_AT));
   const boost = {};
   rows.forEach(r => { boost[r.id] = r.rest ? 0.01 : r.lowish ? 0.08 : r.state === 'settling' ? 4 : r.settled ? 0.3 : 1.5; });
-  S.plan = { rows, note, boost, f, at: Date.now(), events: S.events.length, built: S.events.length, rested: rows.filter(r => r.rest).length, hell };
+  S.plan = { rows, note, boost, f, at: Date.now(), events: S.events.length, built: S.events.length, rested: rows.filter(r => r.rest).length, hell, done };
   return S.plan;
 }
 const planNow = () => (S.plan && S.plan.events === S.events.length ? S.plan : buildPlan());
@@ -928,10 +948,11 @@ function updateMeter() {
   const picks = S.events.filter(e => e.result !== 'skip').length, p = planNow(), n = p.rows.length, s = p.rows.filter(r => r.settled).length;
   $('m-picks').textContent = picks + (picks === 1 ? ' pick' : ' picks');
   $('m-bar').style.width = (n ? s / n * 100 : 0) + '%';
-  $('m-set').textContent = `${s}/${n} confident for now`;
+  const pct = n ? Math.floor(s / n * 100) : 0;
+  $('m-set').textContent = `${pct}% settled`; $('m-set').title = `${s} of ${n} titles have a settled score for now`;
   $('btn-undo').disabled = !S.events.length && !lastForgot();
   const settling = p.rows.filter(r => r.state === 'settling').length, ready = p.rows.filter(r => r.state === 'ready').length;
-  $('focus-line').textContent = (settling ? `Showing mostly the ${settling} titles whose score is still uncertain.` : ready ? `${ready} scores are ready. Push them whenever you like, or keep refining.` : 'Your scores are settled. More picks keep refining the order.')
+  $('focus-line').textContent = (p.done && n - s && (settling || ready) ? 'Your ranking is settled. More picks only fine-tune it. ' : '') + (settling ? `Showing mostly the ${settling} titles whose score is still uncertain.` : ready ? `${ready} scores are ready. Push them whenever you like, or keep refining.` : 'Your scores are settled. More picks keep refining the order.')
     + (p.rested ? ` ${p.rested} title${p.rested === 1 ? ' is' : 's are'} in Elo hell.` : '');
   renderAcct();
 }
@@ -957,7 +978,7 @@ function show(p) {
     $('pick-' + k).className = 'pick';
     $('img-' + k).parentElement.style.background = it.color || '';
   });
-  const pl = tourOn() ? tourLine() : placementLine(p); $('place-line').hidden = !pl; $('place-line').innerHTML = pl;
+  const pl = tourOn() ? tourLine() : placementLine(p) || recheckLine(p); $('place-line').hidden = !pl; $('place-line').innerHTML = pl;
   $('cmp-live').classList.toggle('touring', tourOn());
   $('tour-bracket')?.addEventListener('click', showBracket);
   $('tour-quit')?.addEventListener('click', e => {
@@ -1909,7 +1930,7 @@ function renderInsights() {
   const has = rankedIds().length >= 2;
   $('in-empty').hidden = has; $('in-cards').hidden = !has;
   if (!has) { renderAcct(); return; }
-  for (const f of [renderTaste, renderMovers, renderOldScores, renderNext, renderWrap, renderMatch]) { try { f(); } catch (e) { console.error(e); } }
+  for (const f of [renderTaste, renderAuthors, renderMovers, renderOldScores, renderNext, renderWrap, renderMatch]) { try { f(); } catch (e) { console.error(e); } }
   renderAcct();
 }
 $('wrap-year').onchange = renderWrap;
@@ -1926,7 +1947,7 @@ function deriveEvents() {
 }
 function saveAliases() { store.set('aliases', S.aliases); dirty(); }
 
-const MEDIA_FIELDS = `id type title { userPreferred english romaji } format status chapters startDate { year } countryOfOrigin coverImage { large color } siteUrl genres meanScore popularity isAdult tags { name rank isMediaSpoiler category }`;
+const MEDIA_FIELDS = `id type title { userPreferred english romaji } format status chapters startDate { year } countryOfOrigin coverImage { large color } siteUrl genres meanScore popularity isAdult tags { name rank isMediaSpoiler category } staff(sort: [RELEVANCE, ID], perPage: 4) { edges { role node { id name { full } } } }`;
 const mediaLine = m => [m.format === 'ONE_SHOT' ? 'one shot' : m.countryOfOrigin === 'KR' ? 'manhwa' : m.countryOfOrigin === 'CN' || m.countryOfOrigin === 'TW' ? 'manhua' : (m.format || '').toLowerCase().replace('_', ' '),
   m.startDate?.year, m.chapters ? m.chapters + ' ch.' : m.status === 'RELEASING' ? 'ongoing' : ''].filter(Boolean).join(' · ');
 async function searchManga(q) {
@@ -2414,6 +2435,28 @@ function tasteChartHtml(P) {
       <span class="tbar"><i class="${b.lift > 0 ? 'pos' : 'neg'}" style="${b.lift > 0 ? 'left:50%' : `left:${50 - pct}%`};width:${pct}%"></i></span><span class="tval">${b.lift > 0 ? '+' : '−'}${Math.abs(b.lift)}</span></div>`; }).join('')}
     <div class="taxis"><span>Ranks lower</span><span>Your average</span><span>Ranks higher</span></div></div>`;
 }
+// Authors you've read more than once: one title says little about an author, so those are left out.
+let authorsAll = false;
+function authorStats() {
+  const rows = freshPlan().rows, n = rows.length, by = new Map();
+  rows.forEach((r, i) => { for (const [id, name] of S.items[r.id].authors || []) { if (!by.has(id)) by.set(id, { id, name, t: [] }); by.get(id).t.push({ id: r.id, rank: i + 1, s: n > 1 ? 100 - i / (n - 1) * 100 : 100 }); } });
+  const planning = {};
+  for (const it of Object.values(S.items)) if (!it.gone && !it.relinkedTo && effStatus(it) === 'PLANNING') for (const [id] of it.authors || []) (planning[id] ||= []).push(it.title);
+  const list = [...by.values()].filter(a => a.t.length >= 2).map(a => ({ ...a, avg: Math.round(avg(a.t.map(x => x.s))), planning: planning[a.id] || [] })).sort((a, b) => b.avg - a.avg || b.t.length - a.t.length);
+  return { list, loaded: rows.some(r => S.items[r.id].authors) };
+}
+function renderAuthors() {
+  const el = $('in-authors'), A = authorStats();
+  if (!A.loaded) { el.innerHTML = '<p class="muted small">Press <b>Update from AniList</b> in Setup once to load authors.</p>'; return; }
+  if (!A.list.length) { el.innerHTML = '<p class="muted small">No author has two or more titles in your ranking yet.</p>'; return; }
+  const show = authorsAll ? A.list : A.list.slice(0, 8);
+  el.innerHTML = `<ul class="ilist alist">${show.map(a => `<li><span class="iname"><b>${esc(a.name)}</b> <small class="muted">${a.t.length} titles</small>
+      <small class="muted">${a.t.map(x => `#${x.rank} ${esc(S.items[x.id].title)}`).join(' · ')}</small>
+      ${a.planning.length ? `<small class="muted">On your Planning list: ${a.planning.map(esc).join(', ')}</small>` : ''}</span>
+      <span class="ival">${a.avg}</span></li>`).join('')}</ul>
+    ${A.list.length > 8 ? `<div class="actions"><button class="link" id="authors-more">${authorsAll ? 'Show fewer' : `Show all ${A.list.length} authors`}</button></div>` : ''}`;
+  $('authors-more')?.addEventListener('click', () => { authorsAll = !authorsAll; renderAuthors(); });
+}
 function renderTaste() {
   const el = $('in-taste'), P = tasteProfile();
   if (!P) { el.innerHTML = '<p class="muted small">Rank at least 10 titles to see your taste profile.</p>'; return; }
@@ -2754,7 +2797,9 @@ function mediaExtras(m) {
   for (const t of m.tags || []) if (t.category && TAGCAT[t.name] !== t.category) { TAGCAT[t.name] = t.category; newCat = true; }
   if (newCat) store.set('tagCats', TAGCAT);
   const alt = [m.title?.english, m.title?.romaji].filter(x => x && x !== m.title?.userPreferred).join(' / ');
-  return { pub: m.status || '', year: m.startDate?.year || 0, adult: !!m.isAdult, pop: m.popularity ?? null, alt,
+  // Authors: the people credited with the story, the art or the original work (not translators, letterers, assistants).
+  const authors = m.staff ? [...new Map((m.staff.edges || []).filter(e => e.node?.name?.full && /story|art|creator|script|illustrat/i.test(e.role || '') && !/assist|touch-up|translat|letter|edit|design/i.test(e.role || '')).map(e => [e.node.id, [e.node.id, e.node.name.full]])).values()] : null;
+  return { ...(authors ? { authors } : {}), pub: m.status || '', year: m.startDate?.year || 0, adult: !!m.isAdult, pop: m.popularity ?? null, alt,
     demo: (m.tags || []).filter(t => DEMO.includes(t.name)).sort((a, b) => b.rank - a.rank)[0]?.name || '' };
 }
 function applyEntry(e, initial) {
@@ -2848,6 +2893,11 @@ function finishPlacement(id, quiet) {
   const it = S.items[id]; delete it.placeAt; touch(it); saveItems(); S.placing = null;
   if (!quiet) { const r = freshPlan().rows.findIndex(x => x.id === id) + 1; toast(`${it.title} placed at #${r}`); }
 }
+function recheckLine(p) {
+  const e = oldPick(pairStats(S.events), p[0], p[1]); if (!e) return '';
+  const d = new Date(e.t);
+  return `A second look: you last compared these two in ${MONTHS[d.getMonth()]} ${d.getFullYear()}. Pick whichever you prefer now.`;
+}
 function placementLine(p) {
   const P = S.placing;
   if (!P || !p.includes(P.id)) return '';
@@ -2862,7 +2912,7 @@ const LOCAL = ['pendingDelete', 'excluded', 'pendingStatus', 'forgotAt', 'resetA
 const KEEP = new Set([...LOCAL, 'localAt', 'seenAt', 'baseScore', 'addedAt']);
 function snapshot() {
   const items = {};
-  for (const [k, it] of Object.entries(S.items)) { const { tags, genres, meanScore, ...rest } = it; items[k] = rest; }
+  for (const [k, it] of Object.entries(S.items)) { const { tags, genres, meanScore, authors, ...rest } = it; items[k] = rest; }
   return { format: 'anilist-manga-ranker', version: 2, savedAt: Date.now(), items, events: S.raw, aliases: S.aliases, removed: S.removed,
     settings: S.settings, settingsAt: S.settingsAt || 0, pushes: S.pushes };
 }
@@ -3055,6 +3105,7 @@ async function cloudSync() {
     }
     S.gh.at = Date.now(); store.set('gh', S.gh.remember ? S.gh : null);
     S.cloudHard = S.cloudLocked = false; store.set('syncBroken', null);
+    checkSyncExpiry();
     if (gotNew) { recompute(); if (!valid(S.pair)) S.pair = null; if (!S.busy) go(S.view); toast('Synced picks from your other device'); }
   } catch (e) {
     S.cloudErr = e.message; logError('Sync: ' + e.message);
@@ -3071,8 +3122,7 @@ async function cloudSync() {
 const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : new Date(t).toLocaleString(); };
 const TOKEN_URL = 'https://github.com/settings/tokens/new?scopes=gist&description=AniList%20Manga%20Ranker';
 // ── Warnings on the main screen: sync that has stopped working, and sign-ins or tokens about to expire ──
-// AniList's token says when it expires (it's a JWT). GitHub tells in a response header, where the browser lets the
-// page read it; where it doesn't, an expired token shows up as a sync or update error instead.
+// AniList's token says when it expires (it's a JWT). For GitHub tokens see checkSyncExpiry below.
 function jwtExp(tok) { try { const p = JSON.parse(atob(String(tok).split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); return p.exp > 0 ? p.exp * 1000 : 0; } catch { return 0; } }
 function noteExpiry(kind, v) {
   if (!v) return;
@@ -3080,8 +3130,34 @@ function noteExpiry(kind, v) {
   if (!t) return;
   const all = store.get('tokenExp', {}); if (all[kind] === t) return;
   all[kind] = t; store.set('tokenExp', all);
+  const man = store.get('tokenExpManual', {}); if (man[kind]) { delete man[kind]; store.set('tokenExpManual', man); }
 }
-const forgetExpiry = kind => { const all = store.get('tokenExp', {}); if (all[kind]) { delete all[kind]; store.set('tokenExp', all); } };
+// GitHub names a token's expiry date in a response header that web pages aren't allowed to read. The Android app
+// can read it through its own network layer, so there it's checked for the sync token once a day. In a browser the
+// date can't be read at all; Setup has a field to enter it by hand instead.
+let expCheckedAt = 0;
+async function checkSyncExpiry() {
+  if (!IS_APP || !S.gh?.token || Date.now() - expCheckedAt < 864e5) return;
+  expCheckedAt = Date.now();
+  try {
+    const r = await http().get({ url: 'https://api.github.com/rate_limit', headers: { Authorization: 'Bearer ' + S.gh.token, Accept: 'application/vnd.github+json' } });
+    const rh = r.headers || {}, k = Object.keys(rh).find(x => x.toLowerCase() === 'github-authentication-token-expiration');
+    if (k) noteExpiry('sync', rh[k]); else if (r.status === 200 && !store.get('tokenExpManual', {}).sync) forgetExpiry('sync');   // a token with no expiry
+  } catch { expCheckedAt = 0; }
+  renderWarn();
+}
+// The "Token expires on" field: shown where the date can't be read automatically, and as a fallback in the app.
+const expField = kind => { const t = store.get('tokenExp', {})[kind], auto = IS_APP && t && !store.get('tokenExpManual', {})[kind];
+  return auto ? `<p class="small muted">This token expires on ${esc(new Date(t).toLocaleDateString())}. You'll be warned ${WARN_DAYS} days before.</p>`
+    : `<div class="field"><span>Token expires on (optional)</span><input type="date" id="exp-${kind}" value="${t ? (d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)(new Date(t)) : ''}"></div>
+       <p class="small muted">${IS_APP ? '' : "A web page isn't allowed to read this from GitHub. "}Enter the expiry date GitHub showed when you made the token and you'll be warned ${WARN_DAYS} days before it runs out.</p>`; };
+function wireExpField(kind) {
+  const el = $('exp-' + kind); if (!el) return;
+  el.onchange = () => { const all = store.get('tokenExp', {}), man = store.get('tokenExpManual', {}), t = el.value ? Date.parse(el.value + 'T23:59:59') : 0;
+    if (t) { all[kind] = t; man[kind] = true; } else { delete all[kind]; delete man[kind]; }
+    store.set('tokenExp', all); store.set('tokenExpManual', man); renderWarn(); toast(t ? 'Expiry date saved' : 'Expiry date cleared'); };
+}
+const forgetExpiry = kind => { const all = store.get('tokenExp', {}), man = store.get('tokenExpManual', {}); if (all[kind]) { delete all[kind]; store.set('tokenExp', all); } if (man[kind]) { delete man[kind]; store.set('tokenExpManual', man); } };
 const WARN_DAYS = 14;
 function renderWarn() {
   const el = $('warn-banner'); if (!el) return;
@@ -3111,6 +3187,7 @@ function renderCloud() {
     el.innerHTML = `<p>Syncing automatically through a private gist on your GitHub account. ${S.cloudBusy ? 'Syncing…' : S.gh.at ? 'Last synced ' + esc(ago(S.gh.at)) + '.' : ''}</p>
       ${S.cloudErr ? `<div class="note bad">${esc(S.cloudErr)}</div>` : ''}
       <div class="actions"><button id="btn-cloud-now" ${S.cloudBusy ? 'disabled' : ''}>Sync now</button><button id="btn-cloud-restore">Restore an earlier version</button><button id="btn-cloud-off">Stop syncing on this device</button></div>
+      ${expField('sync')}
       <h3 style="margin:16px 0 4px;font-size:15px">Encryption</h3>
       <p class="small muted">${locked ? 'The sync file is encrypted. Enter the passphrase you set on your other device.'
         : has ? 'The sync file is encrypted with the passphrase saved on this device. GitHub only sees scrambled text. Your other devices need the same passphrase.'
@@ -3121,7 +3198,7 @@ function renderCloud() {
         <p>With a passphrase, nobody with the gist's link can read your list. Every device needs version 1.0.10 of the app or newer to open an encrypted file.</p>
         <p>There is no way to recover a forgotten passphrase, but your picks are also on each device: delete the gist on GitHub, set a new passphrase here, and this device starts a fresh sync file. Deleting the gist is also how you clear versions that were saved before encryption; they stay readable in its history otherwise.</p>
       </details>`;
-    $('btn-cloud-now').onclick = cloudSync; $('btn-cloud-restore').onclick = openRestore;
+    $('btn-cloud-now').onclick = cloudSync; $('btn-cloud-restore').onclick = openRestore; wireExpField('sync');
     $('btn-cloud-off').onclick = () => { S.gh = null; S.cloudErr = ''; store.set('gh', null); store.set('syncBroken', null); forgetExpiry('sync'); renderCloud(); toast('This device no longer syncs. Your picks here are kept.'); };
     $('btn-pass').onclick = () => {
       const v = $('gh-pass').value.trim(); if (!v) { $('gh-pass').focus(); return; }
@@ -3225,7 +3302,7 @@ function renderUpdates(msg) {
     ${msg ? `<div class="note">${esc(msg)}</div>` : ''}${UPD.err ? `<div class="note bad">${esc(UPD.err)}</div>` : ''}
     ${UPD.latest ? `<div class="note ok"><b>${esc(UPD.latest.name)}</b> is available.${UPD.latest.notes ? `<br><span class="small">${esc(UPD.latest.notes.split('\n')[0])}</span>` : ''}</div>` : ''}
     ${has ? `<div class="actions">${UPD.latest ? (IS_APP ? `<button class="primary" id="upd-go" ${UPD.busy ? 'disabled' : ''}>Download and install</button>` : `<a class="btn primary" href="${esc(UPD.latest.page)}" target="_blank" rel="noopener">Open release</a>`) : ''}<button id="upd-check" ${UPD.busy ? 'disabled' : ''}>${UPD.busy && !msg ? 'Checking…' : 'Check for updates'}</button><button class="link" id="upd-forget">Remove token</button></div>
-      <p class="small muted">Checks automatically when you open ${IS_APP ? 'the app' : 'this page'} (at most every 6 hours).</p>`
+      <p class="small muted">Checks automatically when you open ${IS_APP ? 'the app' : 'this page'} (at most every 6 hours).</p>${expField('upd')}`
     : `<p class="small muted">${IS_APP ? 'Lets the app download new versions' : 'Lets this page tell you when there is a newer version'} from your private repository <b>${esc(APP_REPO || '')}</b>${IS_APP ? ' and open the installer' : ''}. Needs a GitHub token that can only read that one repository${IS_APP ? '' : ' (the same kind the app uses; you can paste the same one)'}:</p>
       <ol class="steps">
         <li>Open <a href="${TOKEN_HELP}">GitHub → new fine-grained token</a>.</li>
@@ -3235,7 +3312,7 @@ function renderUpdates(msg) {
         <li><b>Generate token</b>, copy it (it starts with <code>github_pat_</code>) and paste it here.</li>
       </ol>
       <div class="inline"><input type="text" id="upd-tok" placeholder="github_pat_…" autocomplete="off" spellcheck="false"><button class="primary" id="upd-save">Save</button></div>`}`;
-  $('upd-go')?.addEventListener('click', installUpdate);
+  $('upd-go')?.addEventListener('click', installUpdate); wireExpField('upd');
   $('upd-check')?.addEventListener('click', () => checkUpdate(true));
   $('upd-forget')?.addEventListener('click', () => { store.set('updToken', null); forgetExpiry('upd'); UPD.latest = null; renderUpdates(); });
   $('upd-save')?.addEventListener('click', () => { const t = $('upd-tok').value.trim(); if (!t) return; store.set('updToken', t); forgetExpiry('upd'); checkUpdate(true); });
